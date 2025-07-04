@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+##############################################################################
+#
+# Copyright (C) 2013, Linaro Ltd.
+# Copyright (C) 2022, Synaptics
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##############################################################################
+
+if [ "$0" = "${BASH_SOURCE}" ]; then
+    echo -e "\nERROR: This script must not be executed but sourced like below"
+    echo -e "\n. $0 \nor \nsource $0"
+    exit 1
+fi
+
+if [ -z "$BASH" -a -z "$ZSH_NAME" ] ;then
+    echo Please source this script in bash or zsh shell
+    return 1
+fi
+
+# check that we are not root!
+if [ "$(whoami)" = "root" ]; then
+    echo -e "\nERROR: do not use the BSP as root. Exiting..."
+    return 1
+fi
+
+# check that we are where we think we are!
+if [ ! -f "poky/oe-init-build-env" ]; then
+    echo -e "\nUNABLE TO FIND POKY !"
+    return 1
+fi
+
+usage () {
+    cat <<EOF
+Usage: [MACHINE=<MACHINE>] [DISTRO=<DISTRO>] source $BASH_SOURCE [BUILDDIR]
+If no MACHINE is set, list all possible machines, and ask user to choose.
+The default distro is "poky".
+EOF
+}
+
+# Clean up PATH for local dirs starting with .
+export PATH="`echo ${PATH} | sed 's/\(:.\|:\)*:/:/g;s/^.\?://;s/:.\?$//'`"
+
+# Clean PATH of any previous oe-core bitbake or scripts directories
+export PATH="$(echo $PATH | sed 's!/[^:]\+/openembedded-core/\(bitbake/bin\|scripts\):!!g')"
+
+# only 1 parameter max, <build> folder, or default to build-$machine
+_BUILDDIR=
+if [ $# -gt 1 ]; then
+    usage
+    return 1
+elif [ $# -eq 1 ]; then
+    _BUILDDIR=$1
+    # check if this <build> folder was already configured
+    _CONFIGS_FOUND=
+    if [ -f ${_BUILDDIR}/conf/local.conf ] && \
+        [ -f ${_BUILDDIR}/conf/bblayers.conf ]; then
+        _CONFIGS_FOUND="yes"
+    fi
+fi
+# if no MACHINE is set, list supported machines and ask user.
+# if no list of supported machines exists find and show all machines.
+# Note: filter out meta-linaro and non-x86 qemu machines from this list to
+# avoid confusion (it's still possible to select any valid machine manually).
+while [ -z "$MACHINE" ] && [ -z "$_CONFIGS_FOUND" ]; do
+    machines="${PWD}/meta-dctk-syns/setup/machines.txt"
+    if [ -f ${machines} ]; then
+        _options=$(<${machines})
+    else
+        _options=$(\ls -1 *{,/*}/conf/machine/*.conf 2>/dev/null | grep -v '\(^meta-linaro\|^meta-intel\|/qemumips\|/qemuppc\|poky\)')
+    fi
+    _options_count=`echo ${_options} | wc -w`
+    PS3="Please enter your choice of machine [1..${_options_count}]: "
+    select opt in `echo $_options`
+    do
+        if [ -z "$opt" ]; then
+            echo "Invalid choice"
+        else
+            MACHINE=$(echo $opt | sed 's|.*/\(.*\)\.conf|\1|')
+            break;
+        fi
+    done
+    unset PS3 _options_count _options
+done
+
+# at this point, MACHINE is set, either from env, or explicitely
+# BUILDIR is either set from command line, or needs to be set to build-$MACHINE
+if [ -z "$_BUILDDIR" ]; then
+    _BUILDDIR=build-$MACHINE
+    # check if this build-$MACHINE folder was already configured
+    if [ -f ${_BUILDDIR}/conf/local.conf ] && \
+        [ -f ${_BUILDDIR}/conf/bblayers.conf ]
+    then
+        _CONFIGS_FOUND="yes"
+    fi
+fi
+
+_SYNA_EULA_STR="Synaptics-EULA"
+_SYNA_EULA_FILE="${PWD}/meta-synaptics/EULA.rst"
+_PROMPT_SYNA_EULA=1
+_SYNA_EULA_ACCEPTED=0
+
+# Allow the user to set this variable in the enviroment to skip the EULA prompt.
+# This is useful for automation.
+if [ "$ACCEPT_SYNA_EULA" ]; then
+    _PROMPT_SYNA_EULA=0
+    if [ "$ACCEPT_SYNA_EULA" == "1" ]; then
+        _SYNA_EULA_ACCEPTED=1
+    fi
+elif [ "$_CONFIGS_FOUND" ]; then
+    _LICENSE_FLAGS_STR="$(grep LICENSE_FLAGS_ACCEPTED ${_BUILDDIR}/conf/local.conf)"
+    if [[ "$_LICENSE_FLAGS_STR" == *"$_SYNA_EULA_STR"* ]]; then
+        # EULA has already been accepted so we can skip the prompt
+        _PROMPT_SYNA_EULA=0
+    fi
+fi
+
+if [ $_PROMPT_SYNA_EULA -eq 1 ]; then
+    if [ ! -f $_SYNA_EULA_FILE ]; then
+        echo "The Synaptics End User License Agreement file is missing! Please check your environment."
+    else
+        more -d $_SYNA_EULA_FILE
+        _RESPONSE=
+        while [ -z "$_RESPONSE" ]; do
+            echo -n "Do you accept the terms of the Synaptics End User License Agreement? (y/n) "
+            read _RESPONSE
+            case "$_RESPONSE" in
+                y|Y)
+                    echo "The terms of the Synaptics End User License Agreement have been accepted."
+                    _SYNA_EULA_ACCEPTED=1
+                    ;;
+                n|N)
+                    echo "The terms of the Synaptics End User License Agreement have been declined."
+                    _SYNA_EULA_ACCEPTED=0
+                    ;;
+                *)
+                    echo "Invalid Response, please try again"
+                    _RESPONSE=
+                    ;;
+            esac
+        done
+        unset _RESPONSE
+    fi
+fi
+
+_PWD_PREV=$(pwd)
+
+# Warning: Sourcing the oe-init-build-env script changes the current directory.
+
+TEMPLATECONF=${_PWD_PREV}/meta-dctk-syns/setup/conf source poky/oe-init-build-env ${_BUILDDIR}
+
+_CONFIG_UPDATED=0
+_LICENSE_FLAGS_STR="$(grep LICENSE_FLAGS_ACCEPTED conf/local.conf)"
+if [ $_SYNA_EULA_ACCEPTED -eq 1 ] && [ "$_LICENSE_FLAGS_STR" != *"$_SYNA_EULA_STR"* ]; then
+    _UPDATED_LICENSE_ACCEPTED_STR="${_LICENSE_FLAGS_STR%*\"} $_SYNA_EULA_STR\""
+    sed -i "s/$_LICENSE_FLAGS_STR/$_UPDATED_LICENSE_ACCEPTED_STR/" conf/local.conf
+    if [ $? -eq 0 ]; then
+        _CONFIG_UPDATED=1
+    fi
+fi
+
+if [ $DISPLAY_SERVER ]; then
+    # Remove existing config to enable sourcing script with different display server
+    sed -i '/x11/d;/wayland/d;/xf86-video-modesetting/d' conf/local.conf
+
+    if [ "is${DISPLAY_SERVER}" == "isx11" ]; then
+        echo "DISTRO_FEATURES:append = \" x11\"" >> conf/local.conf
+        echo "XSERVER:append = \" xf86-video-modesetting\"" >> conf/local.conf
+        echo "DISTRO_FEATURES:remove = \" wayland\"" >> conf/local.conf
+        if [ "is${MACHINE}" = "issl1680_dct" ]; then
+            sed -i '/meta-xfce/d;/meta-gnome/d;/meta-networking/d' conf/bblayers.conf
+            XFCE_LAYER_DIR=$(readlink -f ../meta-openembedded/meta-xfce)
+            GNOME_LAYER_DIR=$(readlink -f ../meta-openembedded/meta-gnome)
+            NW_LAYER_DIR=$(readlink -f ../meta-openembedded/meta-networking)
+            sed -i "/meta-multimedia /a\ \ ${XFCE_LAYER_DIR}\\\\\n\ \ ${GNOME_LAYER_DIR}\\\\\n\ \ ${NW_LAYER_DIR}\\\\"  conf/bblayers.conf
+        fi
+    else
+        DISPLAY_SERVER="wayland"
+        #Select wayland as default
+        echo "DISTRO_FEATURES:append = \" wayland\"" >> conf/local.conf
+        echo "DISTRO_FEATURES:remove = \" x11\"" >> conf/local.conf
+        echo "DISTRO_FEATURES_NATIVESDK:remove = \"x11\"" >> conf/local.conf
+    fi
+elif [ -z "$_CONFIGS_FOUND" ]; then
+        DISPLAY_SERVER="wayland"
+        #Select wayland as default
+        echo "DISTRO_FEATURES:append = \" wayland\"" >> conf/local.conf
+        echo "DISTRO_FEATURES:remove = \" x11\"" >> conf/local.conf
+        echo "DISTRO_FEATURES_NATIVESDK:remove = \"x11\"" >> conf/local.conf
+fi
+
+if [ "is$OOBE" = "isenabled" ]; then
+    if [ "is${MACHINE}" = "issl1680_dct" ]; then
+        echo "DISTRO_FEATURES:append = \" virtualization\"" >> conf/local.conf
+    fi
+fi
+
+unset _SYNA_EULA_STR _SYNA_EULA_FILE _PROMPT_SYNA_EULA _SYNA_EULA_ACCEPTED _LICENSE_FLAGS_STR _UPDATED_LICENSE_ACCEPTED_STR
+
+if [ "$_CONFIGS_FOUND" ]; then
+    if [ $_CONFIG_UPDATED -eq 1 ]; then
+        echo -e "\nConfig files already exist in folder ${_BUILDDIR}/conf/, only LICENSE_FLAGS_ACCEPTED has been updated."
+    else
+        echo -e "\nConfig files already exist in folder ${_BUILDDIR}/conf/, they were not modified."
+    fi
+    unset -f usage
+    unset _BUILDDIR _CONFIGS_FOUND _PWD_PREV MACHINE _CONFIG_UPDATED DISPLAY_SERVER
+    return 0
+fi
+unset _CONFIG_UPDATED
+
+# Check the machine type specified
+_VALID_MACHINES=$(\ls -1 ${_PWD_PREV}/*{,/*}/conf/machine/${MACHINE}.conf 2>/dev/null | wc -l)
+if [ "$_VALID_MACHINES" -eq 0 ]; then
+    echo -e "\n##\n## WARNING: No machine configs found for '$MACHINE' !"
+    echo -e "##\n## That looks very suspicious, you should check your configuration"
+    echo -e "##\n## Possible alternatives might be:\n##"
+    ( cd ${_PWD_PREV} && \ls -1 *{,/*}/conf/machine/*.conf 2>/dev/null | sed 's|.*/\(.*\)\.conf|##   \1|' | sort | uniq )
+    echo -e "##"
+elif [ "$_VALID_MACHINES" -gt 1 ]; then
+    echo -e "\n##\n## WARNING: Multiple possible machine configs found for '$MACHINE' !\n##"
+    ( cd ${_PWD_PREV} && \ls -1 *{,/*}/conf/machine/${MACHINE}.conf 2>/dev/null | sed 's|^|##   |' )
+    echo -e "##\n## That looks very suspicious, you should check your source tree\n##"
+fi
+
+# encrypt OPTEE TA with production key by default
+if [[ "${OPTEE_TA_ENC}" != "dev" ]]; then
+    OPTEE_TA_ENC="prod"
+fi
+
+# Change settings according environment
+sed -e "s/##MACHINE##/${MACHINE}/g" \
+    -e "s/##BUILD_NUMBER##/\"${BUILD_NUMBER}\"/" \
+    -e "s/##OPTEE_TA_ENC##/\"${OPTEE_TA_ENC}\"/" \
+    -e "s|##META_SYNAPTICS_DIR##|$(readlink -f ${_PWD_PREV}/meta-synaptics)|" \
+    -i conf/local.conf
+
+if [[ "${DISTRO}" != "" ]]; then
+    sed -e "s/DISTRO ?= \"poky\"/DISTRO ?= \"${DISTRO}\"/" -i conf/local.conf
+fi
+
+# Add source mirror configuration according to environment
+if [[ "${SOURCE_MIRROR_URL}" != "" ]]; then
+
+    echo -e "\nSetting source mirror url to ${SOURCE_MIRROR_URL}\n"
+
+    cat >> conf/local.conf <<EOF
+
+INHERIT += "own-mirrors"
+SOURCE_MIRROR_URL ?= "${SOURCE_MIRROR_URL}"
+
+EOF
+fi
+
+if [ -f ${_PWD_PREV}/auto.conf ]; then
+    ln -s ${_PWD_PREV}/auto.conf conf/auto.conf
+fi
+
+cat <<EOF
+Configuration files have been created for the following configuration:
+ MACHINE: $MACHINE
+ DISPLAY_SERVER: $DISPLAY_SERVER
+ OPTEE_TA_ENC: $OPTEE_TA_ENC
+EOF
+
+# Since this script is sourced, be careful not to pollute caller's environment with temp variables
+unset -f usage
+unset _BUILDDIR _CONFIGS_FOUND _PWD_PREV _VALID_MACHINES MACHINE DISPLAY_SERVER

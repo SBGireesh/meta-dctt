@@ -1,0 +1,25 @@
+From 133138dd57d8eb71b2611ed589f49e80a6862d11 Mon Sep 17 00:00:00 2001
+From: "jewel.joseph" <jewel.joseph@dicortech.com>
+Date: Thu, 27 Feb 2025 15:14:18 +0530
+Subject: [PATCH] Change lpddr4x to lpddr4
+
+---
+ .../sl1680_poky_aarch64_rdk/sl1680_poky_aarch64_rdk_defconfig   | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/product/sl1680_poky_aarch64_rdk/sl1680_poky_aarch64_rdk_defconfig b/product/sl1680_poky_aarch64_rdk/sl1680_poky_aarch64_rdk_defconfig
+index 193cb09..2ceaa98 100644
+--- a/product/sl1680_poky_aarch64_rdk/sl1680_poky_aarch64_rdk_defconfig
++++ b/product/sl1680_poky_aarch64_rdk/sl1680_poky_aarch64_rdk_defconfig
+@@ -120,7 +120,7 @@ CONFIG_PREBOOT=y
+ #
+ CONFIG_PREBOOT_MARKET_ID=1
+ CONFIG_PREBOOT_REL_PATH="preboot"
+-CONFIG_PREBOOT_DDR_TYPE="lpddr4x"
++CONFIG_PREBOOT_DDR_TYPE="lpddr4"
+ CONFIG_PREBOOT_MEMORY_SPEED=3733
+ CONFIG_PREBOOT_MEMORY_SIZE="4GB"
+ CONFIG_PREBOOT_MEMORY_VARIANT="default/default"
+-- 
+2.25.1
+

@@ -1,0 +1,3 @@
+conf/machine/sl1680_dct.conf
+conf/machine/sl1680spi_dct.conf
+conf/machine/sl1680usb_dct.conf

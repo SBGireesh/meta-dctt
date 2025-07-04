@@ -1,0 +1,14 @@
+diff --git a/recipes-bsp/images/astra-media-oobe.bb b/recipes-bsp/images/astra-media-oobe.bb
+index ed703d6..bf530d1 100644
+--- a/recipes-bsp/images/astra-media-oobe.bb
++++ b/recipes-bsp/images/astra-media-oobe.bb
+@@ -12,6 +12,9 @@ IMAGE_INSTALL:append:dolphin = " \
+     git \
+     libgomp \
+     libgomp-dev \
++    gstreamer1.0-plugins-bad \
++    python3-pyqt5 \
++    python3-evdev \
+ "
+ IMAGE_INSTALL:append = " \
+     ${@bb.utils.contains('DISTRO_FEATURES', 'wayland', 'syna-weston-desktop', '', d)} \
